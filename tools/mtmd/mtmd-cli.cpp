@@ -354,26 +354,28 @@ int main(int argc, char ** argv) {
         const float * pcm_data = (const float *)mtmd_bitmap_get_data(bmp.ptr.get());
         size_t n_samples = mtmd_bitmap_get_n_bytes(bmp.ptr.get()) / sizeof(float);
 
-        // Run dual-stream prefill
+        // Run dual-stream transcription (prefill + autoregressive decode)
         llama_pos n_past = 0;
+        std::vector<llama_token> output_tokens;
         int32_t ret = mtmd_helper_eval_voxtral_realtime(
             ctx.ctx_vision.get(), ctx.lctx,
             params.model.path.c_str(),
             pcm_data, n_samples,
-            ctx.n_batch, &n_past);
+            ctx.n_batch, n_predict, &n_past, &output_tokens);
 
         if (ret != 0) {
-            LOG_ERR("Voxtral RT prefill failed\n");
+            LOG_ERR("Voxtral RT transcription failed\n");
             return 1;
         }
 
         ctx.n_past = n_past;
 
-        // Autoregressive decoding (standard sampling)
+        // Print transcription
         LOG("\n");
-        if (!g_is_interrupted && generate_response(ctx, n_predict)) {
-            return 1;
+        for (const auto & tok : output_tokens) {
+            LOG("%s", common_token_to_piece(ctx.lctx, tok).c_str());
         }
+        LOG("\n");
 
     } else if (is_single_turn) {
         g_is_generating = true;

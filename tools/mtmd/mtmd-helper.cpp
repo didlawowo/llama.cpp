@@ -487,9 +487,12 @@ int32_t mtmd_helper_eval_voxtral_realtime(
         const float * pcm_samples,
         size_t n_samples,
         int32_t n_batch,
-        llama_pos * new_n_past) {
+        int32_t max_tokens,
+        llama_pos * new_n_past,
+        std::vector<llama_token> * output_tokens) {
 
     const llama_model * model = llama_get_model(lctx);
+    const llama_vocab * vocab = llama_model_get_vocab(model);
     const int n_embd = llama_model_n_embd(model);
 
     // Voxtral Realtime constants
@@ -612,8 +615,74 @@ int32_t mtmd_helper_eval_voxtral_realtime(
     }
     n_past += n_prefix;
 
-    *new_n_past = n_past;
     LOG_INF("voxtral_rt: prefill done, n_past = %d, n_audio_tokens = %d\n", (int)n_past, n_audio_tokens);
+
+    // 7. Autoregressive decoding with dual-stream continuation
+    const llama_token eos_token = llama_vocab_eos(vocab);
+    int n_decoded = 0;
+
+    for (int i = 0; i < max_tokens && n_decoded < max_tokens; i++) {
+        // sample from logits
+        const float * logits = llama_get_logits_ith(lctx, -1);
+        if (!logits) {
+            LOG_ERR("voxtral_rt: failed to get logits\n");
+            break;
+        }
+
+        // greedy sampling (take argmax)
+        int n_vocab_size = llama_vocab_n_tokens(vocab);
+        llama_token best_token = 0;
+        float best_logit = logits[0];
+        for (int v = 1; v < n_vocab_size; v++) {
+            if (logits[v] > best_logit) {
+                best_logit = logits[v];
+                best_token = v;
+            }
+        }
+
+        if (best_token == eos_token) break;
+
+        if (output_tokens) {
+            output_tokens->push_back(best_token);
+        }
+        n_decoded++;
+
+        // next step: dual-stream if still within audio range, text-only otherwise
+        std::vector<float> next_embd(n_embd);
+        const float * t = tok_embd.get(best_token);
+        if (!t) {
+            LOG_ERR("voxtral_rt: invalid token %d\n", best_token);
+            break;
+        }
+
+        if (n_past < n_audio_tokens) {
+            const float * a = audio_embds.data() + (size_t)n_past * n_embd;
+            for (int j = 0; j < n_embd; j++) {
+                next_embd[j] = a[j] + t[j];
+            }
+        } else {
+            memcpy(next_embd.data(), t, n_embd * sizeof(float));
+        }
+
+        llama_batch batch = llama_batch_init(1, n_embd, 1);
+        batch.n_tokens     = 1;
+        memcpy(batch.embd, next_embd.data(), n_embd * sizeof(float));
+        batch.pos[0]       = n_past;
+        batch.n_seq_id[0]  = 1;
+        batch.seq_id[0][0] = 0;
+        batch.logits[0]    = 1;
+
+        res = llama_decode(lctx, batch);
+        llama_batch_free(batch);
+        if (res != 0) {
+            LOG_ERR("voxtral_rt: decode step %d failed\n", n_decoded);
+            break;
+        }
+        n_past++;
+    }
+
+    *new_n_past = n_past;
+    LOG_INF("voxtral_rt: decoded %d tokens\n", n_decoded);
 
     mtmd_input_chunks_free(chunks);
     mtmd_bitmap_free(bmp);
