@@ -33,6 +33,7 @@ add_library(mtmd
             models/siglip.cpp
             models/whisper-enc.cpp
             models/deepseekocr.cpp
+            models/voxtral-realtime-enc.cpp
             models/mobilenetv5.cpp
             models/youtuvl.cpp
             )
@@ -102,6 +103,7 @@ if(LLAMA_TOOLS_INSTALL)
     install(TARGETS ${TARGET} RUNTIME)
 endif()
 target_link_libraries  (${TARGET} PRIVATE common mtmd Threads::Threads)
+target_include_directories(${TARGET} PRIVATE ../../vendor)
 target_compile_features(${TARGET} PRIVATE cxx_std_17)
 
 # mtmd-debug tool
