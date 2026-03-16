@@ -1755,6 +1755,7 @@ private:
             case SERVER_TASK_TYPE_INFILL:
             case SERVER_TASK_TYPE_EMBEDDING:
             case SERVER_TASK_TYPE_RERANK:
+            case SERVER_TASK_TYPE_AUDIO_TRANSCRIPTION:
                 {
                     // special case: if input is provided via CLI, tokenize it first
                     // otherwise, no need to tokenize as it's already done inside the HTTP thread
