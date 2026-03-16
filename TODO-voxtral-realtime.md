@@ -24,39 +24,53 @@ Related:
 - [x] Verified: GGUF conversion (text Q8_0 + mmproj F16) works
 - [x] Verified: llama-server loads model, detects audio encoder correctly
 
-### Phase 2 — Dual-stream prefill (commit 42e668bae)
+### Phase 2 — Dual-stream transcription (commits 42e668bae → 22f14007f)
 
 - [x] `mtmd_helper_eval_voxtral_realtime()` in mtmd-helper.cpp
 - [x] Token embedding table loader from GGUF
 - [x] Audio + text embedding summation at each position
 - [x] Prefill decode with combined embeddings
-- [x] Compiles and links OK
+- [x] Full autoregressive decoding with dual-stream continuation
+- [x] Caller code in `mtmd-cli.cpp` — detects Voxtral RT and uses dual-stream path
+- [x] Tested with LibriSpeech audio — **perfect transcription output**
+- [x] Performance: 169ms encode, 145 tok/s decode on RTX 3090
+
+### Wrapper server (tools/voxtral-rt-server.py)
+
+- [x] OpenAI-compatible `/v1/audio/transcriptions` endpoint
+- [x] Multipart form-data parsing (file + language + model fields)
+- [x] Forks llama-mtmd-cli per request, cleans up STREAMING_PAD/WORD tokens
+- [x] Compatible with audioloadtest UI
 
 ## TODO
 
-### Phase 2 — Dual-stream (remaining)
+### Phase 3 — Server integration (blocked: needs @ngxson feedback)
 
-- [ ] Add caller code in `mtmd-cli.cpp` that uses `mtmd_helper_eval_voxtral_realtime()`
-      then samples tokens autoregressively (needed to test end-to-end)
-- [ ] Test with real audio file (need GPU free — scale down llama-cpp pod first)
-- [ ] Fix: current API requires `model_path` string to reload token embeddings from GGUF.
-      Ideally should access `tok_embd` from llama_model directly (needs llama API discussion)
-- [ ] Handle autoregressive phase: after prefill, each new token needs
-      `combined[pos] = audio_embd[pos] + tok_embd[new_token]` while pos < n_audio_tokens
+The llama-server integration requires modifying the **slot processing** pipeline
+in `server-context.cpp`. The current architecture processes chunks sequentially
+(tokenize → [encode chunk → decode chunk] → sample), but Voxtral RT needs the
+dual-stream path where audio and text embeddings are summed at each position.
 
-### Phase 3 — Server integration
-
-- [ ] Modify `llama-server` to detect `mtmd_support_voxtral_realtime()` and use dual-stream path
+Changes needed (~500 lines in server code owned by @ngxson):
+- [ ] Modify slot processing to detect `mtmd_support_voxtral_realtime()`
+- [ ] Route audio requests through `mtmd_helper_eval_voxtral_realtime()` instead of `process_chunk()`
+- [ ] Continue dual-stream summation during autoregressive decode (not just prefill)
+- [ ] Support `/v1/audio/transcriptions` endpoint (currently missing from llama-server)
 - [ ] Support `/v1/chat/completions` with `input_audio` content type
-- [ ] Handle the audio marker in the chat template for Voxtral Realtime
+
+**Decision**: Wait for @ngxson's response on issue #19696 before modifying server code.
+He maintains this code and will want to validate the approach.
 
 ### Phase 4 — Cleanup for upstream PR
 
 - [ ] Wait for @ngxson response on issue #19696
+- [ ] Discuss `tok_embd` access — current API reloads from GGUF file (wasteful),
+      ideally should access from llama_model directly (needs llama API change)
+- [ ] Replace greedy sampling in helper with proper sampler passed by caller
 - [ ] Run llama-perplexity and llama-bench
 - [ ] Convert and upload GGUF to HuggingFace
 - [ ] Remove any remaining debug code
-- [ ] Ensure no PADDLEOCR or other master changes are missing
+- [ ] Ensure no PADDLEOCR or other master changes are missing after rebase
 - [ ] Test CI locally
 - [ ] Credit @Acceldium in PR description
 
@@ -86,11 +100,14 @@ TOKEN_BOS = 1, TOKEN_STREAMING_PAD = 32, N_DELAY_TOKENS = 6
 | File | Role |
 |------|------|
 | `tools/mtmd/models/voxtral-realtime-enc.cpp` | Causal audio encoder graph |
-| `tools/mtmd/mtmd-helper.cpp` | Dual-stream prefill logic |
+| `tools/mtmd/mtmd-helper.cpp` | Dual-stream prefill + autoregressive decode |
+| `tools/mtmd/mtmd-helper.h` | Public API declaration |
+| `tools/mtmd/mtmd-cli.cpp` | CLI with Voxtral RT single-turn mode |
 | `tools/mtmd/mtmd-audio.cpp` | Mel spectrogram preprocessor |
 | `tools/mtmd/clip.cpp` | Encoder integration (7 case blocks) |
 | `convert_hf_to_gguf.py` | GGUF conversion + ada_norm precompute |
 | `src/models/llama.cpp` | ada_rms_norm in forward pass |
+| `tools/voxtral-rt-server.py` | OpenAI-compatible wrapper server |
 
 ### Model files (on NFS /mnt/models/)
 
@@ -101,3 +118,48 @@ TOKEN_BOS = 1, TOKEN_STREAMING_PAD = 32, N_DELAY_TOKENS = 6
 ### Docker build
 
 Custom image in `infra/docker-build/builds/llama-cpp-voxtral-rt/`
+
+### Testing with audioloadtest
+
+```bash
+# 1. On nvidia — scale down llama-cpp pod first
+kubectl scale deploy llama-cpp -n mlops --replicas=0
+
+# 2. Start wrapper server
+cd ~/llama.cpp
+python3 tools/voxtral-rt-server.py \
+    --model /tmp/voxtral-4b-rt.gguf \
+    --mmproj /tmp/mmproj-voxtral-4b-rt.gguf \
+    --port 8090
+
+# 3. audioloadtest UI targets http://nvidia:8090/v1
+# Note: wrapper forks llama-mtmd-cli per request (~2s cold start per req)
+# For proper load testing, need Phase 3 (server integration)
+
+# 4. Restore pod when done
+kubectl scale deploy llama-cpp -n mlops --replicas=1
+```
+
+### Test result (2026-03-16)
+
+```
+Input:  LibriSpeech 7127-75946-0002.flac
+Ref:    LET HIM COME IN THEN SAID THE KING AND AS IF COLBERT HAD BEEN
+        LISTENING AT THE DOOR FOR THE PURPOSE OF KEEPING HIMSELF AU
+        COURANT WITH THE CONVERSATION HE ENTERED AS SOON AS THE KING
+        HAD PRONOUNCED HIS NAME TO THE TWO COURTIERS
+Output: Let him come in then, said the king. And as if Colbert had been
+        listening at the door for the purpose of keeping himself au
+        courant with the conversation, he entered as soon as the king
+        had pronounced his name to the two courtiers.
+Encode: 169ms | Decode: 145 tok/s | Total: ~6.6s
+```
+
+## Code stats
+
+| Metric | Value |
+|--------|-------|
+| Original PR #19698 | 2966 lines, 24 files |
+| Our implementation | ~950 lines, 20 files |
+| Reduction | 68% fewer lines |
+| New files | 2 (voxtral-realtime-enc.cpp, voxtral-rt-server.py) |
