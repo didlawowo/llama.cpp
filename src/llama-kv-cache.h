@@ -165,7 +165,13 @@ public:
     ggml_tensor * get_k(ggml_context * ctx, int32_t il, uint32_t n_kv, const slot_info & sinfo) const;
     ggml_tensor * get_v(ggml_context * ctx, int32_t il, uint32_t n_kv, const slot_info & sinfo) const;
 
+<<<<<<< HEAD
     // TurboQuant: get rotation matrix for pre-rotate-queries
+=======
+    // TurboQuant: get rotation matrices (stored as row-major C arrays)
+    // turbo_rotation = R (forward rotation, for Q pre-rotate-queries)
+    // turbo_rotation_inv = R^T = R^{-1} (inverse rotation, for V output un-rotation)
+>>>>>>> a0e8a65 (perf: fp16 WHT dequant + SIMD cooperative dequant — 45% speedup)
     ggml_tensor * get_turbo_rotation() const { return turbo_rotation; }
 
     // store k_cur and v_cur in the cache based on the provided head location
@@ -268,10 +274,16 @@ private:
 
     std::vector<kv_layer> layers;
 
+<<<<<<< HEAD
     // TurboQuant pre-rotate-queries: rotation matrix tensor (128×128)
     // Created when type_k is TURBO3_0 or TURBO4_0
     // Used in build_attn_mha to rotate Q before flash attention
     ggml_tensor * turbo_rotation = nullptr;
+=======
+    // TurboQuant rotation matrices (128x128, row-major stored)
+    ggml_tensor * turbo_rotation = nullptr;      // R (forward rotation)
+    ggml_tensor * turbo_rotation_inv = nullptr;   // R^T = R^{-1} (inverse rotation)
+>>>>>>> a0e8a65 (perf: fp16 WHT dequant + SIMD cooperative dequant — 45% speedup)
 
     // model layer id -> KV cache layer id
     std::unordered_map<int32_t, int32_t> map_layer_ids;
