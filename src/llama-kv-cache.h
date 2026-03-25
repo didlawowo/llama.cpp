@@ -363,6 +363,10 @@ public:
     // TurboQuant: get rotation matrix for pre-rotate-queries optimization
     ggml_tensor * get_turbo_rotation() const;
 
+    // Override virtual methods from llama_memory_context_i
+    ggml_tensor * get_turbo_rot_forward() const override;
+    ggml_tensor * get_turbo_rot_inverse() const override;
+
     // store k_cur and v_cur in the cache based on the provided head location
     // note: the heads in k_cur and v_cur should be laid out contiguously in memory
     //   - k_cur  [n_embd_head_k, n_head_k, n_tokens]
