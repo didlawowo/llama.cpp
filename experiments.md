@@ -115,12 +115,27 @@ Prefill pp4096 (tok/s):
 ---
 
 ### 16. Prefill dequant-then-attend (dequant to fp16 + MMA)
+<<<<<<< HEAD
 **Status**: done — **MASSIVE WIN**
 **Type**: speed (prefill)
 **Branch**: `experiment/prefill-dequant-attend`
 **Result**: turbo3 prefill 631→1121 tok/s (1.78x, 98.8% of q8_0), turbo4 587→1121 (1.91x). PPL 5.8501 (within error bars of 5.8323 baseline). Decode speed unchanged.
 **How**: During prefill (Q->ne[1] > 1), bulk-dequant turbo K/V to fp16 temp buffer, then dispatch to MMA tensor core kernel. During decode (Q->ne[1] == 1), use existing vec kernel. Memory overhead ~16MB temporary per head group.
 **Note**: Tiny PPL regression (5.8501 vs 5.8323) from float→fp16 conversion. Negligible.
+=======
+**Status**: done — **turbo3 + turbo4**
+**Type**: speed (prefill)
+**Branch**: `experiment/prefill-dequant-attend`
+**Result**: turbo3 prefill 631→1125 tok/s (1.78x, 98.8% of q8_0). turbo4 prefill 588→1113 tok/s (1.9x, 98.1% of q8_0).
+**turbo4 note**: QJL correction (~0.001 magnitude) rounds away in fp16 temp buffer. turbo4 prefill PPL 5.8966 vs 5.8186 full precision (+1.3%). Accepted tradeoff: only prompt tokens affected, generated tokens use full-precision SET_ROWS.
+**Bug fixed**: turbo4 dequant_f16 kernel had missing block indexing for ne0 > QK_TURBO4 (Qwen3.5-27B has head_dim=256).
+
+### 16b. turbo4 prefill — accepted fp16 tradeoff
+**Status**: done — **ENABLED, 1.9x prefill speedup**
+**Type**: speed (prefill, turbo4 only)
+**What**: Enabled fp16 dequant + MMA for turbo4 prefill. QJL loses ~1% PPL precision in fp16 round-trip, but 2x prefill speedup is worth it since only prompt tokens are affected.
+**Result**: turbo4 pp4096 = 1113 tok/s (was 588). PPL 5.8966 (all-prefill worst case). Real inference quality between 5.82-5.90 depending on prompt/generation ratio.
+>>>>>>> 1010625 (perf: enable turbo4 prefill MMA — pp4096 588→1113 tok/s (1.9x))
 
 ---
 
