@@ -153,9 +153,6 @@ llama_kv_cache::llama_kv_cache(
 
         // Layer-adaptive: use higher precision for quality-sensitive layers
         // Config: TURBO_LAYER_ADAPTIVE env var controls the strategy
-<<<<<<< HEAD
-        //   0 = uniform (default), 1 = q8_0 for first+last 4, 2 = q8_0 for last 8
-=======
         //   0 = uniform (default)
         //   1 = q8_0 for first 4 + last 4
         //   2 = q8_0 for last 8
@@ -165,7 +162,6 @@ llama_kv_cache::llama_kv_cache(
         //   6 = V-only q8_0 for last 8 (asymmetric: values need more precision)
         //   7 = K-only q8_0 for last 8 (asymmetric: control experiment)
         //   8 = V-only q8_0 for first 2 + last 2
->>>>>>> 65e28eb (feat: asymmetric layer-adaptive modes 6-8 (K/V independent promotion))
         ggml_type layer_type_k = type_k;
         ggml_type layer_type_v = type_v;
         {
@@ -181,18 +177,6 @@ llama_kv_cache::llama_kv_cache(
             const bool is_turbo = (type_k == GGML_TYPE_TURBO3_0 || type_k == GGML_TYPE_TURBO4_0 ||
                                    type_v == GGML_TYPE_TURBO3_0 || type_v == GGML_TYPE_TURBO4_0);
             const uint32_t n_layer = hparams.n_layer;
-<<<<<<< HEAD
-            if (adaptive_mode == 1 && is_turbo && n_layer >= 8) {
-                if (il < 4 || il >= n_layer - 4) {
-                    layer_type_k = GGML_TYPE_Q8_0;
-                    layer_type_v = GGML_TYPE_Q8_0;
-                }
-            } else if (adaptive_mode == 2 && is_turbo && n_layer >= 8) {
-                if (il >= n_layer - 8) {
-                    layer_type_k = GGML_TYPE_Q8_0;
-                    layer_type_v = GGML_TYPE_Q8_0;
-                }
-=======
             bool promote_k = false;
             bool promote_v = false;
             if (is_turbo && n_layer >= 8) {
@@ -212,7 +196,6 @@ llama_kv_cache::llama_kv_cache(
             }
             if (promote_v) {
                 layer_type_v = GGML_TYPE_Q8_0;
->>>>>>> 65e28eb (feat: asymmetric layer-adaptive modes 6-8 (K/V independent promotion))
             }
         }
         ggml_tensor * k = has_k ? ggml_new_tensor_3d(ctx, layer_type_k, n_embd_k_gqa, kv_size, n_stream) : nullptr;
@@ -287,20 +270,9 @@ llama_kv_cache::llama_kv_cache(
         // Fill turbo rotation matrix AFTER buffer clear (clear zeroes everything)
         if (turbo_rotation != nullptr && turbo_rotation->buffer != nullptr && !model.hparams.no_alloc) {
             #include "turbo-rotation-data.h"
-<<<<<<< HEAD
-            ggml_backend_tensor_set(turbo_rotation, TURBO_ROTATION_MATRIX, 0, 128 * 128 * sizeof(float));
-            LLAMA_LOG_INFO("%s: TurboQuant rotation matrix initialized (128x128)\n", __func__);
-=======
-            // ggml is column-major; C arrays are row-major. Storing a row-major matrix
-            // into ggml implicitly transposes it. ggml_mul_mat(A, x) computes A^T @ x.
-            // To get R @ q: store R^T → ggml sees (R^T)^T_col = R → mul_mat gives R @ q. Wait no —
-            // store R so ggml col-major reads it as R^T, then mul_mat gives (R^T)^T = R. ✓
-            // Store R for Q forward rotation, R^T for V inverse rotation
-            // ggml_mul_mat(A,x) computes A@x for row-major stored A (verified by test)
             ggml_backend_tensor_set(turbo_rotation, TURBO_ROTATION_R, 0, 128 * 128 * sizeof(float));
             ggml_backend_tensor_set(turbo_rotation_inv, TURBO_ROTATION_RT, 0, 128 * 128 * sizeof(float));
             LLAMA_LOG_INFO("%s: TurboQuant rotation matrices initialized (128x128)\n", __func__);
->>>>>>> a0e8a65 (perf: fp16 WHT dequant + SIMD cooperative dequant — 45% speedup)
         }
         ctxs_bufs.emplace_back(std::move(ctx), buf);
     }
@@ -2364,8 +2336,6 @@ ggml_tensor * llama_kv_cache_context::get_turbo_rotation() const {
     return kv->get_turbo_rotation();
 }
 
-<<<<<<< HEAD
-=======
 ggml_tensor * llama_kv_cache_context::get_turbo_rotation_inv() const {
     return kv->get_turbo_rotation_inv();
 }
@@ -2378,7 +2348,6 @@ ggml_tensor * llama_kv_cache_context::get_turbo_rot_inverse() const {
     return kv->get_turbo_rotation_inv();
 }
 
->>>>>>> 1f02172 (fix: restore inverse rotation in dequant — PPL 6.19 (1.2% of q8_0) #31 #30)
 ggml_tensor * llama_kv_cache_context::cpy_k(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * k_idxs, int32_t il) const {
     return kv->cpy_k(ctx, k_cur, k_idxs, il, sinfos[i_cur]);
 }
