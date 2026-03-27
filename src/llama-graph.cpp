@@ -2232,6 +2232,14 @@ ggml_tensor * llm_graph_context::build_attn(
     ggml_tensor * cur = build_attn_mha(q, k, v, kq_b, kq_mask, sinks, v_mla, kq_scale, il);
     cb(cur, "kqv_out", il);
 
+    // TurboQuant V un-rotation at graph level (CUDA graph compatible)
+    if (v->type == GGML_TYPE_TURBO3_0 || v->type == GGML_TYPE_TURBO4_0) {
+        if (cur->ne[0] % 128 == 0) {
+            cur = ggml_cont(ctx0, cur);
+            cur = ggml_turbo_wht(ctx0, cur, 1);  // 1 = inverse
+        }
+    }
+
     if (wo) {
         cur = build_lora_mm(wo, cur);
     }
