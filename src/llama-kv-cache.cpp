@@ -108,6 +108,21 @@ llama_kv_cache::llama_kv_cache(
     // create a context for each buffer type
     const bool is_turbo = (type_k == GGML_TYPE_TURBO3_0 || type_k == GGML_TYPE_TURBO4_0 ||
                            type_v == GGML_TYPE_TURBO3_0 || type_v == GGML_TYPE_TURBO4_0);
+
+    // TurboQuant requires head dimensions divisible by 128 (WHT rotation group size)
+    if (is_turbo) {
+        for (uint32_t il = 0; il < hparams.n_layer; ++il) {
+            const uint32_t hk = hparams.n_embd_head_k(il);
+            const uint32_t hv = hparams.n_embd_head_v(il);
+            if (hk % 128 != 0 || hv % 128 != 0) {
+                LLAMA_LOG_ERROR("%s: TurboQuant (turbo3/turbo4) requires head dimensions divisible by 128, "
+                                "but layer %u has head_k=%u, head_v=%u. "
+                                "Use q8_0 or q4_0 instead for this model.\n", __func__, il, hk, hv);
+                throw std::runtime_error("TurboQuant incompatible with this model's head dimensions");
+            }
+        }
+    }
+
     auto ctx_for_buft = [&](ggml_backend_buffer_type_t buft) -> ggml_context * {
         auto it = ctx_map.find(buft);
         if (it == ctx_map.end()) {
