@@ -61,6 +61,9 @@
 /main
 /server
 
+# Local dev
+/Taskfile.yml
+
 # CI
 
 !/.github/workflows/*.yml
