@@ -327,10 +327,11 @@ llama_kv_cache::llama_kv_cache(
         ggml_backend_buffer_clear(buf, 0);
 
         // Fill turbo rotation matrix AFTER buffer clear (clear zeroes everything)
+        // WHT rotation is symmetric/orthogonal: R = R^T, so forward = inverse
         if (turbo_rotation != nullptr && turbo_rotation->buffer != nullptr && !model.hparams.no_alloc) {
             #include "turbo-rotation-data.h"
-            ggml_backend_tensor_set(turbo_rotation, TURBO_ROTATION_R, 0, 128 * 128 * sizeof(float));
-            ggml_backend_tensor_set(turbo_rotation_inv, TURBO_ROTATION_RT, 0, 128 * 128 * sizeof(float));
+            ggml_backend_tensor_set(turbo_rotation, TURBO_ROTATION_MATRIX, 0, 128 * 128 * sizeof(float));
+            ggml_backend_tensor_set(turbo_rotation_inv, TURBO_ROTATION_MATRIX, 0, 128 * 128 * sizeof(float));
             LLAMA_LOG_INFO("%s: TurboQuant rotation matrices initialized (128x128)\n", __func__);
         }
         ctxs_bufs.emplace_back(std::move(ctx), buf);
@@ -404,10 +405,11 @@ void llama_kv_cache::clear(bool data) {
         }
 
         // Re-initialize turbo rotation matrices after buffer clear (clear zeroes everything)
+        // WHT rotation is symmetric/orthogonal: R = R^T, so forward = inverse
         if (turbo_rotation != nullptr && turbo_rotation->buffer != nullptr) {
             #include "turbo-rotation-data.h"
-            ggml_backend_tensor_set(turbo_rotation, TURBO_ROTATION_R, 0, 128 * 128 * sizeof(float));
-            ggml_backend_tensor_set(turbo_rotation_inv, TURBO_ROTATION_RT, 0, 128 * 128 * sizeof(float));
+            ggml_backend_tensor_set(turbo_rotation, TURBO_ROTATION_MATRIX, 0, 128 * 128 * sizeof(float));
+            ggml_backend_tensor_set(turbo_rotation_inv, TURBO_ROTATION_MATRIX, 0, 128 * 128 * sizeof(float));
         }
     }
 }

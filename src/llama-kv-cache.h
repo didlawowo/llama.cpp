@@ -169,6 +169,7 @@ public:
     // turbo_rotation = R (forward rotation, for Q pre-rotate-queries)
     // turbo_rotation_inv = R^T = R^{-1} (inverse rotation, for V output un-rotation)
     ggml_tensor * get_turbo_rotation() const { return turbo_rotation; }
+    ggml_tensor * get_turbo_rotation_inv() const { return turbo_rotation_inv; }
 
     // store k_cur and v_cur in the cache based on the provided head location
     ggml_tensor * cpy_k(ggml_context * ctx, ggml_tensor * k_cur, ggml_tensor * k_idxs, int32_t il, const slot_info & sinfo) const;
@@ -361,8 +362,9 @@ public:
     ggml_tensor * get_k(ggml_context * ctx, int32_t il) const;
     ggml_tensor * get_v(ggml_context * ctx, int32_t il) const;
 
-    // TurboQuant: get rotation matrix for pre-rotate-queries optimization
+    // TurboQuant: get rotation matrices for pre-rotate-queries optimization
     ggml_tensor * get_turbo_rotation() const;
+    ggml_tensor * get_turbo_rotation_inv() const;
 
     // Override virtual methods from llama_memory_context_i
     ggml_tensor * get_turbo_rot_forward() const override;
